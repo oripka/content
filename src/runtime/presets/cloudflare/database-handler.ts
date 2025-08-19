@@ -4,7 +4,8 @@ import { deriveContentKeyB64, encryptGzBase64Envelope } from '../../internal/enc
 
 export default eventHandler(async (event) => {
   const collection = getRouterParam(event, 'collection')!
-  const url = new URL(event.node.req.url || 'http://localhost')
+  // `event.node.req.url` may be relative; supply a base URL to avoid runtime errors.
+  const url = new URL(event.node.req.url || '', 'http://localhost')
   const runtime = useRuntimeConfig()
   const encEnabled = !!runtime?.content?.encryption?.enabled
   const masterB64 = runtime?.content?.encryption?.masterKey
