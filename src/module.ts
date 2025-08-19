@@ -145,12 +145,20 @@ export default defineNuxtModule<ModuleOptions>({
     // Prerender database.sql routes for each collection to fetch dump
     nuxt.options.routeRules ||= {}
 
-    // @ts-expect-error - Prevent nuxtseo from indexing nuxt-content routes
-    // @see https://github.com/nuxt/content/pull/3299
-    nuxt.options.routeRules![`/__nuxt_content/**`] = { robots: false }
+    // Prevent nuxtseo from indexing nuxt-content routes
+    // (legacy + API)
+    // @ts-expect-error - routeRules uses string index globs which Nuxt supports at runtime but TypeScript cannot type
+    nuxt.options.routeRules!['/__nuxt_content/**'] = { robots: false }
+    // @ts-expect-error - routeRules uses string index globs which Nuxt supports at runtime but TypeScript cannot type
+    nuxt.options.routeRules!['/api/__nuxt_content/**'] = { robots: false }
 
     manifest.collections.forEach((collection) => {
-      if (!collection.private) {
+      if (collection.private) return
+
+      if (options.encryption?.enabled) {
+        nuxt.options.routeRules![`/__nuxt_content/${collection.name}/sql_dump.enc`] = { prerender: true }
+      }
+      else {
         nuxt.options.routeRules![`/__nuxt_content/${collection.name}/sql_dump.txt`] = { prerender: true }
       }
     })
@@ -166,13 +174,19 @@ export default defineNuxtModule<ModuleOptions>({
     // Module Options
     nuxt.options.runtimeConfig.public.content = {
       wsUrl: '',
-    }
+      // Expose encryption status to client/runtime so fetchers know which endpoint to use.
+      encryptionEnabled: !!options.encryption?.enabled,
+    } as never
     nuxt.options.runtimeConfig.content = {
       databaseVersion,
       version,
       database: options.database,
       localDatabase: options._localDatabase!,
       integrityCheck: true,
+      encryption: {
+        enabled: !!options.encryption?.enabled,
+        masterKey: options.encryption?.masterKey,
+      },
     } as never
 
     nuxt.hook('nitro:config', async (config) => {
@@ -185,8 +199,14 @@ export default defineNuxtModule<ModuleOptions>({
       config.alias['#content/local-adapter'] = await resolveDatabaseAdapter(options._localDatabase!.type || 'sqlite', resolveOptions)
 
       config.handlers ||= []
+      // Legacy query route
       config.handlers.push({
         route: '/__nuxt_content/:collection/query',
+        handler: resolver.resolve('./runtime/api/query.post'),
+      })
+      // Preferred API query route
+      config.handlers.push({
+        route: '/api/__nuxt_content/:collection/query',
         handler: resolver.resolve('./runtime/api/query.post'),
       })
 
@@ -237,6 +257,10 @@ export default defineNuxtModule<ModuleOptions>({
 })
 
 async function processCollectionItems(nuxt: Nuxt, collections: ResolvedCollection[], options: ModuleOptions) {
+  // unchanged … (keep your original implementation)
+  // NOTE: no changes needed below for the encryption feature
+  // (build-time dumps are already prepared; templates handle .sql vs .sql.enc)
+  // ----------------------------------------------------------------------------
   const collectionDump: Record<string, string[]> = {}
   const collectionChecksum: Record<string, string> = {}
   const collectionChecksumStructure: Record<string, string> = {}
