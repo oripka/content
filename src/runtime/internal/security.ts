@@ -12,7 +12,7 @@ const SQL_SELECT_REGEX = /^SELECT (.*) FROM (\w+)( WHERE .*)? ORDER BY (["\w,\s]
  * @returns True if the query is safe, false otherwise
  */
 export function assertSafeQuery(sql: string, collection: string) {
-  if (!sql) {
+  if (typeof sql !== 'string' || !sql) {
     throw new Error('Invalid query: Query cannot be empty')
   }
 

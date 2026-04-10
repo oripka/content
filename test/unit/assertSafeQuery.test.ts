@@ -60,6 +60,10 @@ describe('decompressSQLDump', () => {
     })
   })
 
+  it('rejects non-string SQL input', () => {
+    expect(() => assertSafeQuery({ length: 1000000000 } as never, 'test')).toThrow()
+  })
+
   it('all queries should be valid', async () => {
     await collectionQueryBuilder(mockCollection, mockFetch).all()
     expect(() => assertSafeQuery(mockFetch.mock.lastCall![1], mockCollection)).not.toThrow()
