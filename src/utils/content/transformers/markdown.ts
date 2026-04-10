@@ -1,3 +1,4 @@
+import { dirname } from 'node:path'
 import { parseMarkdown } from '@nuxtjs/mdc/runtime'
 import type { State } from 'mdast-util-to-hast'
 import { normalizeUri } from 'micromark-util-sanitize-uri'
@@ -27,6 +28,7 @@ export default defineTransformer({
         }
       : undefined
 
+    const virtualPath = String(file.id || file.path || 'content.md')
     const parsed = await parseMarkdown(file.body as string, {
       ...config,
       highlight,
@@ -35,6 +37,11 @@ export default defineTransformer({
       rehype: {
         plugins: config.rehypePlugins,
         options: { handlers: { link } },
+      },
+    }, {
+      fileOptions: {
+        path: virtualPath,
+        dirname: dirname(virtualPath),
       },
     })
 

@@ -255,6 +255,33 @@ describe('Parser (.md)', async () => {
     expect(nodes.shift().props.href).toEqual('../../_foo')
   })
 
+  test('provides sanitized file metadata to remark plugins', async () => {
+    const parsed = await parseContent('content/docs/example.md', '# Example', collection, {
+      options: {
+        content: {
+          build: {
+            markdown: {
+              remarkPlugins: {
+                inspect: {
+                  instance: () => (_tree: unknown, file: { dirname?: string, path?: string }) => {
+                    expect(file.dirname).toBe('content/docs')
+                    expect(file.path).toBe('content/docs/example.md')
+                  },
+                },
+              },
+            },
+          },
+        },
+        mdc: {
+          compress: false,
+          markdown: {},
+        },
+      },
+    } as unknown as Nuxt)
+
+    expect(parsed.body.children[0].tag).toBe('h1')
+  })
+
   test('No trailing dashes in heading ids', async () => {
     const headings = [
       '# `<Alert />` ',
