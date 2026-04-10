@@ -13,7 +13,7 @@ export interface ContentLLMSCollectionSection extends LLMsSection {
   contentFilters?: Array<{
     field: string
     operator: SQLOperator
-    value?: string
+    value?: string | number | boolean | null
   }>
 }
 
@@ -71,6 +71,16 @@ export function prepareContentSections(sections: LLMsSection[]) {
         field: 'extension',
         operator: '=',
         value: 'md',
+      },
+      {
+        field: 'draft',
+        operator: '<>',
+        value: true,
+      },
+      {
+        field: 'private',
+        operator: '<>',
+        value: true,
       },
     ],
   }))

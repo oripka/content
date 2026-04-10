@@ -22,7 +22,7 @@ declare module 'nuxt-llms' {
     contentFilters?: Array<{
       field: string
       operator: SQLOperator
-      value?: string
+      value?: string | number | boolean | null
     }>
   }
 }
