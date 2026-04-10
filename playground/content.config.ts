@@ -36,6 +36,11 @@ const content = defineCollection({
     date: z.date(),
     rawbody: z.string(),
     testd: property(z.object({})).inherit('components/TestD.vue'),
+    links: z.array(z.object({
+      label: z.string(),
+      icon: z.string(),
+      to: z.string(),
+    })),
   }),
 })
 
@@ -67,6 +72,23 @@ const pages = defineCollection({
 })
 
 const collections = {
+  people: defineCollection({
+    type: 'data',
+    source: 'org/people.csv',
+    schema: z.object({
+      name: z.string(),
+      email: z.string().email(),
+      birthday: z.string().date(),
+      lastloginat: z.string().datetime(),
+    }),
+  }),
+  org: defineCollection({
+    type: 'data',
+    source: 'org/**.csv',
+    schema: z.object({
+      body: z.array(z.any()),
+    }),
+  }),
   hackernews,
   content,
   data,
@@ -90,7 +112,7 @@ const collections = {
   nuxt: defineCollection({
     type: 'page',
     source: {
-      repository: 'https://github.com/nuxt/nuxt',
+      repository: 'https://github.com/nuxt/nuxt/tree/main',
       include: 'docs/**',
       prefix: '/nuxt',
       exclude: [

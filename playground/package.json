@@ -9,16 +9,17 @@
     "dev:prepare": "nuxt prepare"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.14",
-    "@libsql/client": "^0.15.15",
+    "@electric-sql/pglite": "^0.4.2",
+    "@libsql/client": "^0.17.2",
     "@nuxt/content": "latest",
-    "@nuxt/ui": "^4.2.1",
-    "@nuxthub/core": "npm:@nuxthub/core-nightly@0.10.0-20251128-232930-0579c39",
-    "better-sqlite3": "^12.5.0",
-    "drizzle-orm": "^0.44.7",
-    "nuxt": "^4.2.1",
-    "pg": "^8.16.3",
+    "@nuxt/ui": "^4.6.0",
+    "@nuxthub/core": "^0.10.7",
+    "better-sqlite3": "^12.8.0",
+    "drizzle-orm": "^0.45.1",
+    "nuxt": "^4.4.2",
+    "nuxt-llms": "^0.2.0",
+    "pg": "^8.20.0",
     "remark-code-import": "^1.2.0",
-    "shiki-transformer-color-highlight": "^1.0.0"
+    "shiki-transformer-color-highlight": "^1.1.0"
   }
 }

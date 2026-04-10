@@ -1,10 +1,12 @@
 import { readFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
 import { join, normalize } from 'pathe'
 import { withLeadingSlash, withoutTrailingSlash } from 'ufo'
 import { glob } from 'tinyglobby'
 import type { CollectionSource, ResolvedCollectionSource } from '../types/collection'
-import { downloadRepository, parseBitBucketUrl, parseGitHubUrl } from './git'
+import { downloadGitRepository } from './git'
 import { logger } from './dev'
+import gitUrlParse from 'git-url-parse'
 
 export function getExcludedSourcePaths(source: CollectionSource) {
   return [
@@ -19,6 +21,12 @@ export function defineLocalSource(source: CollectionSource | ResolvedCollectionS
     logger.warn('Collection source should not start with `./` or `../`.')
     source.include = source.include.replace(/^(\.\/|\.\.\/|\/)*/, '')
   }
+
+  // If source is a CSV file, define a CSV source
+  if (source.include.endsWith('.csv') && !source.include.includes('*')) {
+    return defineCSVSource(source)
+  }
+
   const { fixed } = parseSourceBase(source)
   const resolvedSource: ResolvedCollectionSource = {
     _resolved: true,
@@ -45,66 +53,117 @@ export function defineLocalSource(source: CollectionSource | ResolvedCollectionS
   return resolvedSource
 }
 
-export function defineGitHubSource(source: CollectionSource): ResolvedCollectionSource {
+export function defineGitSource(source: CollectionSource): ResolvedCollectionSource {
   const resolvedSource = defineLocalSource(source)
-
   resolvedSource.prepare = async ({ rootDir }) => {
-    const repository = source?.repository && parseGitHubUrl(source.repository!)
-    if (repository) {
-      const { org, repo, branch } = repository
-      resolvedSource.cwd = join(rootDir, '.data', 'content', `github-${org}-${repo}-${branch}`)
-
-      let headers: Record<string, string> = {}
-      if (resolvedSource.authToken) {
-        headers = { Authorization: `Bearer ${resolvedSource.authToken}` }
+    if (typeof (source.repository) === 'string') {
+      const repository = source?.repository && gitUrlParse(source.repository)
+      if (repository) {
+        const { protocol, host, full_name, ref } = repository
+        source = {
+          ...source,
+          repository: {
+            url: `${protocol}://${host}/${full_name}`,
+            branch: ref || 'main',
+          },
+        }
       }
+    }
 
-      const url = headers.Authorization
-        ? `https://api.github.com/repos/${org}/${repo}/tarball/${branch}`
-        : `https://github.com/${org}/${repo}/archive/refs/heads/${branch}.tar.gz`
+    if (typeof (source.repository) === 'object') {
+      const repository = source?.repository && gitUrlParse(source.repository.url)
+      if (repository) {
+        const { source: gitSource, owner, name } = repository
+        resolvedSource.cwd = join(rootDir, '.data', 'content', `${gitSource}-${owner}-${name}-${repository.ref || 'main'}`)
 
-      await downloadRepository(url, resolvedSource.cwd!, { headers })
+        let ref: object | undefined
+
+        if (source.repository.branch && source.repository.tag) {
+          throw new Error('Cannot specify both branch and tag for git repository. Please specify one of `branch` or `tag`.')
+        }
+
+        if (source.repository.branch) ref = { branch: source.repository.branch }
+        if (source.repository.tag) ref = { tag: source.repository.tag }
+
+        if (!source.repository?.auth && source.authBasic) {
+          source.repository.auth = {
+            username: source.authBasic.username,
+            password: source.authBasic.password,
+          }
+        }
+        if (!source.repository?.auth && source.authToken) {
+          source.repository.auth = {
+            token: source.authToken,
+          }
+        }
+
+        await downloadGitRepository(source.repository.url!, resolvedSource.cwd!, source.repository.auth, ref)
+      }
     }
   }
-
   return resolvedSource
 }
 
-export function defineBitbucketSource(
-  source: CollectionSource,
-): ResolvedCollectionSource {
-  const resolvedSource = defineLocalSource(source)
+export function defineCSVSource(source: CollectionSource): ResolvedCollectionSource {
+  const { fixed } = parseSourceBase(source)
 
-  resolvedSource.prepare = async ({ rootDir }) => {
-    const repository
-      = source?.repository && parseBitBucketUrl(source.repository!)
-    if (repository) {
-      const { org, repo, branch } = repository
-      resolvedSource.cwd = join(
-        rootDir,
-        '.data',
-        'content',
-        `bitbucket-${org}-${repo}-${branch}`,
-      )
-
-      let headers: Record<string, string> = {}
-      if (resolvedSource.authBasic) {
-        const credentials = `${resolvedSource.authBasic.username}:${resolvedSource.authBasic.password}`
-        // Use platform-appropriate base64 encoding
-        const encodedCredentials = typeof Buffer !== 'undefined'
-          ? Buffer.from(credentials).toString('base64') // Node.js environment
-          : btoa(credentials) // Browser environment (fallback)
-        headers = {
-          Authorization: `Basic ${encodedCredentials}`,
-        }
+  const resolvedSource: ResolvedCollectionSource = {
+    _resolved: true,
+    prefix: withoutTrailingSlash(withLeadingSlash(fixed)),
+    prepare: async ({ rootDir }) => {
+      resolvedSource.cwd = source.cwd
+        ? String(normalize(source.cwd)).replace(/^~~\//, rootDir)
+        : join(rootDir, 'content')
+    },
+    getKeys: async () => {
+      const _keys = await glob(source.include, { cwd: resolvedSource.cwd, ignore: getExcludedSourcePaths(source), dot: true, expandDirectories: false })
+        .catch((): [] => [])
+      const keys = _keys.map(key => key.substring(fixed.length))
+      if (keys.length !== 1) {
+        return keys
       }
 
-      const url = `https://bitbucket.org/${org}/${repo}/get/${branch}.tar.gz`
+      return new Promise((resolve) => {
+        const csvKeys: string[] = []
+        let count = 0
+        let lastByteWasNewline = true
+        createReadStream(join(resolvedSource.cwd, fixed, keys[0]!))
+          .on('data', function (chunk) {
+            for (let i = 0; i < chunk.length; i += 1) {
+              if (chunk[i] == 10) {
+                if (count > 0) { // count === 0 is CSV header row and should not be included
+                  csvKeys.push(`${keys[0]}#${count}`)
+                }
+                count += 1
+              }
+              lastByteWasNewline = chunk[i] == 10
+            }
+          })
+          .on('end', () => {
+            // If file doesn't end with newline and we have at least one data row, add the last row
+            if (!lastByteWasNewline && count > 0) {
+              csvKeys.push(`${keys[0]}#${count}`)
+            }
+            resolve(csvKeys)
+          })
+      })
+    },
+    getItem: async (key) => {
+      const [csvKey, csvIndex] = key.split('#')
+      const fullPath = join(resolvedSource.cwd, fixed, csvKey!)
+      const content = await readFile(fullPath, 'utf8')
 
-      await downloadRepository(url, resolvedSource.cwd!, { headers })
-    }
+      if (key.includes('#')) {
+        const lines = content.split('\n')
+        return lines[0] + '\n' + lines[+(csvIndex || 0)]!
+      }
+
+      return content
+    },
+    ...source,
+    include: source.include,
+    cwd: '',
   }
-
   return resolvedSource
 }
 

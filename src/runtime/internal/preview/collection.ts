@@ -3,7 +3,7 @@ import { joinURL, withoutLeadingSlash } from 'ufo'
 import type { JsonSchema7ObjectType } from 'zod-to-json-schema'
 import { hash } from 'ohash'
 import { getOrderedSchemaKeys } from '../schema'
-import { parseSourceBase } from './utils'
+import { formatDate, formatDateTime, parseSourceBase } from './utils'
 import { withoutPrefixNumber, withoutRoot } from './files'
 import type { CollectionInfo, ResolvedCollectionSource } from '@nuxt/content'
 
@@ -131,8 +131,12 @@ function computeValuesBasedOnCollectionSchema(collection: CollectionInfo, data: 
     // @ts-expect-error format does exist
     else if (type === 'string' || ['string', 'enum'].includes(value.type)) {
       // @ts-expect-error format does exist
-      if (['data', 'datetime'].includes(value.format)) {
-        values.push(valueToInsert !== 'NULL' ? `'${new Date(valueToInsert).toISOString()}'` : defaultValue)
+      if (value.format === 'date') {
+        values.push(valueToInsert !== 'NULL' ? `'${formatDate(valueToInsert)}'` : defaultValue)
+      }
+      // @ts-expect-error format does exist
+      else if (value.format === 'datetime') {
+        values.push(valueToInsert !== 'NULL' ? `'${formatDateTime(valueToInsert)}'` : defaultValue)
       }
       else {
         values.push(`'${String(valueToInsert).replace(/\n/g, '\\n').replace(/'/g, '\'\'')}'`)

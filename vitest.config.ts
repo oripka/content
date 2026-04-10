@@ -9,6 +9,7 @@ export default defineVitestConfig({
   },
   test: {
     environment: 'nuxt',
+    fileParallelism: false,
     alias: {
       '#content/manifest': resolve('./test/mock/content-manifest.ts'),
     },

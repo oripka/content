@@ -11,7 +11,7 @@ import { applyContentDumpsPreset } from './shared-dumps'
 
 export default definePreset({
   name: 'nuxthub',
-  async setup(options, nuxt) {
+  async setup(options, nuxt, config) {
     const nuxtOptions = nuxt.options as unknown as { hub: { db?: string | object | false, database?: boolean } }
 
     // Ensure runtimeConfig.hub exists
@@ -40,6 +40,14 @@ export default definePreset({
         options.database ||= { type: hubDb.driver as 'sqlite' | 'postgresql' | 'postgres' | 'libsql' | 'pglite', ...hubDb.connection } as unknown as SqliteDatabaseConfig | LibSQLDatabaseConfig | PGliteDatabaseConfig
       }
     }
+
+    const preset = (process.env.NITRO_PRESET || nuxt.options.nitro.preset || provider).replace(/_/g, '-')
+    if (preset.includes('cloudflare')) {
+      await cloudflarePreset.setup?.(options, nuxt, config)
+    }
+    else {
+      await nodePreset.setup?.(options, nuxt, config)
+    }
   },
   async setupNitro(nitroConfig, options) {
     const { nuxt } = options as unknown as { nuxt: Nuxt & { options: { hub: { db?: boolean | object, database?: boolean } } } }
@@ -47,15 +55,14 @@ export default definePreset({
 
     applyContentDumpsPreset(nitroConfig, { ...options, platform: 'nuxthub' })
 
-    const nuxthubVersion = nuxt.options.hub?.database === true ? 0.9 : 0.10
     // NuxtHub <= 0.9
-    if (nuxthubVersion <= 0.9) {
+    if (nuxt.options.hub?.database === true) {
       if (nitroConfig.runtimeConfig?.content?.database?.type === 'sqlite') {
         logger.warn('Deploying with NuxtHub < 1 requires using D1 database, switching to D1 database with binding `DB`.')
         nitroConfig.runtimeConfig!.content!.database = { type: 'd1', bindingName: 'DB' }
       }
     }
-    else if (nuxthubVersion >= 0.10) {
+    else if (typeof nuxt.options.hub?.db === 'string' && typeof hubConfig.db === 'object') {
       const hubDb = hubConfig?.db as unknown as { driver: string, connection: object }
       if (hubDb.driver === 'd1') {
         nitroConfig.runtimeConfig!.content!.database ||= { type: 'd1', bindingName: 'DB' }

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 import { z } from 'zod'
-import { generateCollectionInsert, defineCollection, resolveCollection, getTableName, SLICE_SIZE, MAX_SQL_QUERY_SIZE } from '../../src/utils/collection'
+import { generateCollectionInsert, defineCollection, resolveCollection, getTableName, SLICE_SIZE, MAX_SQL_QUERY_SIZE, utf8ByteLength } from '../../src/utils/collection'
 import { initiateValidatorsContext } from '../../src/utils/dependencies'
 
 describe('generateCollectionInsert', () => {
@@ -17,6 +17,8 @@ describe('generateCollectionInsert', () => {
         otherField: z.string().default('untitled'),
         otherField2: z.boolean().default(true),
         date: z.date().default(new Date('2022-01-01')),
+        dateString: z.string().date().default('2022-01-01'),
+        datetimeString: z.string().datetime().default('2022-01-01 20:00:00'),
         object: z.object({ foo: z.string() }).default(() => ({ foo: 'bar' })),
         array: z.array(z.string()).default(() => []),
       }),
@@ -31,7 +33,7 @@ describe('generateCollectionInsert', () => {
     expect(sql[0]).toBe([
       `INSERT INTO ${getTableName('content')}`,
       ' VALUES',
-      ' (\'foo.md\', \'[]\', 13, \'2022-01-01T00:00:00.000Z\', \'md\', \'{}\', \'{"foo":"bar"}\', \'untitled\', true, \'foo\', \'bnUQ85H_Zf72faGIQhV0i9QeTEnf1ueEIaMAO8aAAGw\');',
+      ' (\'foo.md\', \'[]\', 13, \'2022-01-01\', \'2022-01-01\', \'2022-01-01 20:00:00\', \'md\', \'{}\', \'{"foo":"bar"}\', \'untitled\', true, \'foo\', \'qOlPCMRxWbrtFhHMqkJLriaEnrze1H-G48FLCfDo13M\');',
     ].join(''))
   })
 
@@ -64,7 +66,7 @@ describe('generateCollectionInsert', () => {
     expect(sql[0]).toBe([
       `INSERT INTO ${getTableName('content')}`,
       ' VALUES',
-      ' (\'foo.md\', \'["foo"]\', 42, \'2022-01-02T00:00:00.000Z\', \'md\', \'{}\', \'{"foo":"baz"}\', \'foo\', false, \'foo\', \'ImMjHvkHl82Jx1bjlpanb9d3i_HQIbjNFverKKbZLME\');',
+      ' (\'foo.md\', \'["foo"]\', 42, \'2022-01-02\', \'md\', \'{}\', \'{"foo":"baz"}\', \'foo\', false, \'foo\', \'uppo29zBKkTDGdRbmj29XkaEcWcpEnA1UYLgajzyWw0\');',
     ].join(''))
   })
 
@@ -122,5 +124,98 @@ describe('generateCollectionInsert', () => {
       ].join(''))
       index++
     }
+  })
+
+  test('Split multibyte (UTF-8) values that exceed byte limit', () => {
+    const collection = resolveCollection('content', defineCollection({
+      type: 'data',
+      source: '**',
+      schema: z.object({
+        content: z.string(),
+      }),
+    }))!
+
+    // '心' is 3 bytes in UTF-8. 35000 chars = 105000 bytes > MAX_SQL_QUERY_SIZE (100000)
+    const content = '心'.repeat(35000)
+
+    const { queries: sql } = generateCollectionInsert(collection, {
+      id: 'multibyte.md',
+      stem: 'multibyte',
+      extension: 'md',
+      meta: {},
+      content,
+    })
+
+    // Must be split into multiple queries
+    expect(sql.length).toBeGreaterThan(1)
+
+    // Each query must fit within the byte limit
+    for (const query of sql) {
+      expect(utf8ByteLength(query)).toBeLessThan(MAX_SQL_QUERY_SIZE)
+    }
+
+    // First query should be INSERT, subsequent should be UPDATE
+    expect(sql[0]).toContain('INSERT INTO')
+    for (let i = 1; i < sql.length; i++) {
+      expect(sql[i]).toContain('UPDATE')
+    }
+
+    // Reconstruct the content from all queries and verify it matches the original
+    const insertMatch = sql[0]!.match(/'(心+)'/)
+    let reconstructed = insertMatch![1]!
+    for (let i = 1; i < sql.length; i++) {
+      const updateMatch = sql[i]!.match(/CONCAT\(content, '(心+)'\)/)
+      reconstructed += updateMatch![1]!
+    }
+    expect(reconstructed).toBe(content)
+  })
+
+  test('Succeed when SLICE_SIZE byte boundary falls on an emoji', () => {
+    const collection = resolveCollection('content', defineCollection({
+      type: 'data',
+      source: '**',
+      schema: z.object({
+        content: z.string(),
+      }),
+    }))!
+
+    // 'a' (1 byte) shifts alignment so that the SLICE_SIZE byte boundary
+    // falls in the middle of a '😀' (4 bytes in UTF-8)
+    // biggestColumn = "'a😀😀...😀'" → byte 0: quote(1), byte 1: 'a'(1), bytes 2+: emojis(4 each)
+    // Byte at SLICE_SIZE (70000) = 2 + 4*17499.5 → falls inside the 17500th emoji
+    const content = 'a' + '😀'.repeat(25000)
+
+    const { queries: sql } = generateCollectionInsert(collection, {
+      id: 'emoji-boundary.md',
+      stem: 'emoji-boundary',
+      extension: 'md',
+      meta: {},
+      content,
+    })
+
+    // Must be split into multiple queries
+    expect(sql.length).toBeGreaterThan(1)
+
+    // Each query must fit within the byte limit
+    for (const query of sql) {
+      expect(utf8ByteLength(query)).toBeLessThan(MAX_SQL_QUERY_SIZE)
+    }
+
+    // First query should be INSERT, subsequent should be UPDATE
+    expect(sql[0]).toContain('INSERT INTO')
+    for (let i = 1; i < sql.length; i++) {
+      expect(sql[i]).toContain('UPDATE')
+    }
+
+    // Reconstruct the content from all queries and verify no emoji was split
+    const insertMatch = sql[0]!.match(/'(a(?:😀)+)'/)
+    expect(insertMatch).not.toBeNull()
+    let reconstructed = insertMatch![1]!
+    for (let i = 1; i < sql.length; i++) {
+      const updateMatch = sql[i]!.match(/CONCAT\(content, '((?:😀)+)'\)/)
+      expect(updateMatch).not.toBeNull()
+      reconstructed += updateMatch![1]!
+    }
+    expect(reconstructed).toBe(content)
   })
 })

@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { kebabCase, pascalCase } from 'scule'
 import { resolveComponent, toRaw, defineAsyncComponent, computed } from 'vue'
-import type { AsyncComponentLoader } from 'vue'
 import type { MDCComment, MDCElement, MDCRoot, MDCText } from '@nuxtjs/mdc'
 import htmlTags from '@nuxtjs/mdc/runtime/parser/utils/html-tags-list'
 import MDCRenderer from '@nuxtjs/mdc/runtime/components/MDCRenderer.vue'
 import { toHast } from 'minimark/hast'
-import { globalComponents, localComponents } from '#content/components'
+import { globalComponents, localComponents, localComponentLoaders } from '#content/components'
 import { useRuntimeConfig } from '#imports'
 
 interface Renderable {
@@ -116,21 +115,15 @@ const componentsMap = computed(() => {
 function resolveVueComponent(component: string | Renderable) {
   let _component: unknown = component
   if (typeof component === 'string') {
-    if (htmlTags.includes(component)) {
+    if (htmlTags.has(component)) {
       return component
     }
     if (globalComponents.includes(pascalCase(component))) {
       _component = resolveComponent(component, false)
     }
     else if (localComponents.includes(pascalCase(component))) {
-      const loader: AsyncComponentLoader = () => {
-        return import('#content/components')
-          .then((m) => {
-            const comp = m[pascalCase(component) as keyof typeof m] as unknown as () => unknown
-            return comp ? comp() : undefined
-          })
-      }
-      _component = defineAsyncComponent(loader)
+      const loader = localComponentLoaders[pascalCase(component) as keyof typeof localComponentLoaders]
+      _component = loader ? defineAsyncComponent(loader) : undefined
     }
     if (typeof _component === 'string') {
       return _component
@@ -183,7 +176,7 @@ function loadComponents(node: MDCRoot | MDCElement, documentMeta: { tags: Record
   }
   const renderTag = findMappedTag(node as unknown as MDCElement, documentMeta.tags)
   const components2 = [] as Array<[string, unknown]>
-  if ((node as unknown as MDCRoot).type !== 'root' && !htmlTags.includes(renderTag)) {
+  if ((node as unknown as MDCRoot).type !== 'root' && !htmlTags.has(renderTag)) {
     components2.push([tag, renderTag])
   }
   for (const child of node.children || []) {

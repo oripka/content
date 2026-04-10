@@ -2,10 +2,11 @@ import { hash } from 'ohash'
 import type { Collection, ResolvedCollection, CollectionSource, DefinedCollection, ResolvedCollectionSource, CustomCollectionSource, ResolvedCustomCollectionSource } from '../types/collection'
 import { getOrderedSchemaKeys, describeProperty, getCollectionFieldsTypes } from '../runtime/internal/schema'
 import type { Draft07, ParsedContentFile } from '../types'
-import { defineLocalSource, defineGitHubSource, defineBitbucketSource } from './source'
+import { defineLocalSource, defineGitSource } from './source'
 import { emptyStandardSchema, mergeStandardSchema, metaStandardSchema, pageStandardSchema, infoStandardSchema, detectSchemaVendor, replaceComponentSchemas } from './schema'
 import { logger } from './dev'
 import nuxtContentContext from './context'
+import { formatDate, formatDateTime } from './content/transformers/utils'
 
 export function getTableName(name: string) {
   return `_content_${name}`
@@ -34,6 +35,7 @@ export function defineCollection<T>(collection: Collection<T>): DefinedCollectio
     schema: standardSchema,
     extendedSchema: extendedSchema,
     fields: getCollectionFieldsTypes(extendedSchema),
+    indexes: collection.indexes,
   }
 }
 
@@ -102,10 +104,7 @@ function resolveSource(source: string | CollectionSource | CollectionSource[] | 
     }
 
     if (source.repository) {
-      if (source.repository.startsWith('https://bitbucket.org/')) {
-        return defineBitbucketSource(source)
-      }
-      return defineGitHubSource(source)
+      return defineGitSource(source)
     }
 
     return defineLocalSource(source)
@@ -121,8 +120,27 @@ export const MAX_SQL_QUERY_SIZE = 100000
 /**
  * When we split a value in multiple SQL queries, we want to allow for a buffer
  * so if the rest of the query is a bit long, we will not hit the 100KB limit
+ * NOTE: This is the byte limit, not the character limit
  */
 export const SLICE_SIZE = 70000
+
+const encoder = new TextEncoder()
+
+/**
+ * Calculate UTF-8 byte length of a string
+ */
+export function utf8ByteLength(str: string): number {
+  return encoder.encode(str).byteLength
+}
+
+/**
+ * Return the largest character index such that str.slice(0, result) has UTF-8 byte length <= targetBytes
+ */
+export function charIndexAtByteOffset(str: string, targetBytes: number): number {
+  const buf = new Uint8Array(targetBytes)
+  const { read } = encoder.encodeInto(str, buf)
+  return read
+}
 
 // Convert collection data to SQL insert statement
 export function generateCollectionInsert(collection: ResolvedCollection, data: ParsedContentFile): { queries: string[], hash: string } {
@@ -158,7 +176,10 @@ export function generateCollectionInsert(collection: ResolvedCollection, data: P
       values.push(Number(valueToInsert))
     }
     else if (property?.sqlType === 'DATE') {
-      values.push(`'${new Date(valueToInsert as string).toISOString()}'`)
+      values.push(`'${formatDate(valueToInsert as string)}'`)
+    }
+    else if (property?.sqlType === 'DATETIME') {
+      values.push(`'${formatDateTime(valueToInsert as string)}'`)
     }
     else if (property?.enum) {
       values.push(`'${String(valueToInsert).replace(/\n/g, '\\n').replace(/'/g, '\'\'')}'`)
@@ -178,7 +199,7 @@ export function generateCollectionInsert(collection: ResolvedCollection, data: P
   const sql = `INSERT INTO ${collection.tableName} VALUES (${'?, '.repeat(values.length).slice(0, -2)});`
     .replace(/\?/g, () => values[index++] as string)
 
-  if (sql.length < MAX_SQL_QUERY_SIZE) {
+  if (utf8ByteLength(sql) < MAX_SQL_QUERY_SIZE) {
     return {
       queries: [sql],
       hash: valuesHash,
@@ -188,7 +209,7 @@ export function generateCollectionInsert(collection: ResolvedCollection, data: P
   // Split the SQL into multiple statements:
   // Take the biggest column to insert (usually body) and split the column in multiple strings
   // first we insert the row in the database, then we update it with the rest of the string by concatenation
-  const biggestColumn = [...values].sort((a, b) => String(b).length - String(a).length)[0]
+  const biggestColumn = [...values].sort((a, b) => utf8ByteLength(String(b)) - utf8ByteLength(String(a)))[0]
   const bigColumnIndex = values.indexOf(biggestColumn!)
   const bigColumnName = fields[bigColumnIndex]
 
@@ -201,7 +222,7 @@ export function generateCollectionInsert(collection: ResolvedCollection, data: P
   }
 
   if (typeof biggestColumn === 'string') {
-    let sliceIndex = getSliceIndex(biggestColumn, SLICE_SIZE)
+    let sliceIndex = getSliceIndex(biggestColumn, charIndexAtByteOffset(biggestColumn, SLICE_SIZE))
 
     values[bigColumnIndex] = `${biggestColumn.slice(0, sliceIndex)}'`
     index = 0
@@ -213,7 +234,8 @@ export function generateCollectionInsert(collection: ResolvedCollection, data: P
     ]
     while (sliceIndex < biggestColumn.length) {
       const prevSliceIndex = sliceIndex
-      sliceIndex = getSliceIndex(biggestColumn, sliceIndex + SLICE_SIZE)
+      const rawIndex = charIndexAtByteOffset(biggestColumn.slice(sliceIndex), SLICE_SIZE) + sliceIndex
+      sliceIndex = rawIndex >= biggestColumn.length ? biggestColumn.length + 1 : getSliceIndex(biggestColumn, rawIndex)
 
       const isLastSlice = sliceIndex > biggestColumn.length
       const newSlice = `'${biggestColumn.slice(prevSliceIndex, sliceIndex)}` + (!isLastSlice ? '\'' : '')
@@ -233,6 +255,64 @@ export function generateCollectionInsert(collection: ResolvedCollection, data: P
     queries: [sql],
     hash: valuesHash,
   }
+}
+
+/**
+ * Generate a safe index name following SQL naming conventions
+ * Ensures name is within database limits (PostgreSQL 63 char limit)
+ */
+function generateIndexName(collectionName: string, columns: string[]): string {
+  const base = `idx_${collectionName}_${columns.join('_')}`
+
+  // Limit to 63 characters (PostgreSQL limit, most restrictive common limit)
+  // SQLite allows 1024, D1 follows SQLite
+  if (base.length > 63) {
+    // Truncate and add hash to ensure uniqueness
+    const hashSuffix = hash(base).slice(0, 8)
+    return base.slice(0, 54) + '_' + hashSuffix
+  }
+
+  return base
+}
+
+/**
+ * Generate CREATE INDEX statements for a collection
+ * Returns array of SQL statements (one per index)
+ */
+export function generateCollectionIndexStatements(collection: ResolvedCollection): string[] {
+  if (!collection.indexes || collection.indexes.length === 0) {
+    return []
+  }
+
+  const statements: string[] = []
+
+  for (const index of collection.indexes) {
+    // Validate columns exist in schema
+    const invalidColumns = index.columns.filter(
+      column => !collection.fields[column] && column !== 'id',
+    )
+
+    if (invalidColumns.length > 0) {
+      logger.warn(
+        `Index references non-existent column(s) "${invalidColumns.join(', ')}" in collection "${collection.name}". Skipping this index.`,
+      )
+      continue
+    }
+
+    // Generate index name
+    const indexName = index.name || generateIndexName(collection.name, index.columns)
+
+    // Quote column names for SQL safety
+    const quotedColumns = index.columns.map(col => `"${col}"`).join(', ')
+
+    // Build CREATE INDEX statement
+    const uniqueKeyword = index.unique ? 'UNIQUE ' : ''
+    const statement = `CREATE ${uniqueKeyword}INDEX IF NOT EXISTS ${indexName} ON ${collection.tableName} (${quotedColumns});`
+
+    statements.push(statement)
+  }
+
+  return statements
 }
 
 // Convert a collection with Zod schema to SQL table definition
@@ -279,6 +359,12 @@ export function generateCollectionTableDefinition(collection: ResolvedCollection
 
   if (opts.drop) {
     definition = `DROP TABLE IF EXISTS ${collection.tableName};\n${definition}`
+  }
+
+  // Add index statements
+  const indexStatements = generateCollectionIndexStatements(collection)
+  if (indexStatements.length > 0) {
+    definition += '\n' + indexStatements.join('\n')
   }
 
   return definition

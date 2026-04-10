@@ -1,6 +1,7 @@
 // src/runtime/internal/api.ts
 import { useRuntimeConfig } from '#imports'
 import { checksums } from '#content/manifest'
+import { getRequestHeaders } from 'h3'
 import { forceClientRefresh } from './client-reload'
 
 import type { H3Event } from 'h3'
@@ -27,12 +28,14 @@ function isRecoverable(e: unknown) {
 
 async function selfHealOnce(event: H3Event | undefined, collection: string) {
   // Minimal self-heal: only clear this collection’s cached dump + checksum
-  try {
-    localStorage.removeItem(`content_${'checksum_' + collection}`)
-    localStorage.removeItem(`content_${'collection_' + collection}`)
-  }
-  catch {
-    // Non-critical: best-effort cleanup
+  if (import.meta.client) {
+    try {
+      localStorage.removeItem(`content_${'checksum_' + collection}`)
+      localStorage.removeItem(`content_${'collection_' + collection}`)
+    }
+    catch {
+      // Non-critical: best-effort cleanup
+    }
   }
 
   // If encryption is enabled, proactively (best-effort) re-fetch the key
@@ -46,13 +49,26 @@ async function selfHealOnce(event: H3Event | undefined, collection: string) {
   }
 }
 
-function withCloudflareContext<T extends Record<string, unknown>>(event: H3Event | undefined, options: T): T {
-  const cloudflare = event?.context?.cloudflare
-  if (!cloudflare) {
-    return options
+function getForwardedHeaders(event: H3Event | undefined) {
+  const headers = event ? getRequestHeaders(event) : {}
+  headers['accept-encoding'] = undefined
+  return headers
+}
+
+async function fetchContent<T>(
+  event: H3Event | undefined,
+  path: string,
+  options: NonNullable<Parameters<typeof $fetch>[1]>,
+): Promise<T> {
+  const fetchOptions = {
+    ...options,
+    headers: {
+      ...getForwardedHeaders(event),
+      ...options.headers,
+    },
   }
 
-  return { ...options, context: { cloudflare } } as T
+  return event ? await event.$fetch(path, fetchOptions) : await $fetch(path, fetchOptions)
 }
 
 // override fetchDatabase
@@ -77,11 +93,11 @@ export async function fetchDatabase(event: H3Event | undefined, collection: stri
   for (const path of attempts) {
     const query = { v: checksum, t: import.meta.dev ? Date.now() : undefined }
     const doFetch = async (stamp?: number) => {
-      const payload = await $fetch<string>(path, withCloudflareContext(event, {
+      const payload = await fetchContent<string>(event, path, {
         responseType: 'text' as const,
         headers,
         query: { v: checksum, t: stamp ?? query.t },
-      }))
+      })
 
       if (!payload || !payload.trim()) {
         const error = new Error(`Empty dump payload from ${path}`)
@@ -141,9 +157,10 @@ export async function fetchQuery<Item>(
   const initialQuery = { v: checksum, t: import.meta.dev ? Date.now() : undefined }
 
   try {
-    const rows = await $fetch<Item[]>(
+    const rows = await fetchContent<Item[]>(
+      event,
       `/__nuxt_content/${collection}/query`,
-      withCloudflareContext(event, { ...opts, query: initialQuery }),
+      { ...opts, query: initialQuery },
     )
     return rows
   }
@@ -154,12 +171,13 @@ export async function fetchQuery<Item>(
     await selfHealOnce(event, collection)
     const retryStamp = Date.now()
     try {
-      return await $fetch<Item[]>(
+      return await fetchContent<Item[]>(
+        event,
         `/__nuxt_content/${collection}/query`,
-        withCloudflareContext(event, {
+        {
           ...opts,
           query: { v: checksum, t: retryStamp },
-        }),
+        },
       )
     }
     catch (retryErr) {
@@ -171,22 +189,18 @@ export async function fetchQuery<Item>(
   }
 }
 
-// keep fetchDumpKey as-is
 export async function fetchDumpKey(
   event: H3Event | undefined,
   collection: string,
   kid?: string,
 ): Promise<{ kid: string, k: string }> {
-  return await $fetch(`/__nuxt_content/${collection}/key`, {
-    ...withCloudflareContext(event, {
-      headers: {
-        'content-type': 'application/json',
-        ...(event?.node?.req?.headers?.cookie ? { cookie: event.node.req.headers.cookie } : {}),
-      },
-      // Prefer kid when available; fall back to legacy v=checksum for backward compatibility
-      query: kid
-        ? { kid, t: import.meta.dev ? Date.now() : undefined }
-        : { v: checksums[String(collection)], t: import.meta.dev ? Date.now() : undefined },
-    }),
+  return await fetchContent(event, `/__nuxt_content/${collection}/key`, {
+    headers: {
+      'content-type': 'application/json',
+      ...(event?.node?.req?.headers?.cookie ? { cookie: event.node.req.headers.cookie } : {}),
+    },
+    query: kid
+      ? { kid, t: import.meta.dev ? Date.now() : undefined }
+      : { v: checksums[String(collection)], t: import.meta.dev ? Date.now() : undefined },
   })
 }

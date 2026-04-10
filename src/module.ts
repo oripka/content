@@ -177,9 +177,13 @@ export default defineNuxtModule<ModuleOptions>({
     // Prerender database.sql routes for each collection to fetch dump
     nuxt.options.routeRules ||= {}
 
-    // Prevent nuxtseo from indexing nuxt-content routes
+    // Prevent nuxtseo from indexing nuxt-content routes and keep dumps uncached by route rules.
     // @ts-expect-error - routeRules uses string index globs which Nuxt supports at runtime but TypeScript cannot type
-    nuxt.options.routeRules!['/__nuxt_content/**'] = { robots: false }
+    nuxt.options.routeRules!['/__nuxt_content/**'] = {
+      ...nuxt.options.routeRules!['/__nuxt_content/**'],
+      robots: false,
+      cache: false,
+    }
 
     if (options.encryption?.enabled && !options.encryption.masterKey) {
       options.encryption.masterKey = randomBytes(32).toString('base64')
@@ -190,10 +194,12 @@ export default defineNuxtModule<ModuleOptions>({
       if (collection.private) return
 
       if (encryptionEnabled) {
-        nuxt.options.routeRules![`/__nuxt_content/${collection.name}/sql_dump.enc`] = { prerender: true }
+        const key = `/__nuxt_content/${collection.name}/sql_dump.enc`
+        nuxt.options.routeRules![key] = { ...nuxt.options.routeRules![key], prerender: true }
       }
       else {
-        nuxt.options.routeRules![`/__nuxt_content/${collection.name}/sql_dump.txt`] = { prerender: true }
+        const key = `/__nuxt_content/${collection.name}/sql_dump.txt`
+        nuxt.options.routeRules![key] = { ...nuxt.options.routeRules![key], prerender: true }
       }
     })
 
@@ -466,7 +472,7 @@ async function processCollectionItems(nuxt: Nuxt, collections: ResolvedCollectio
     ...new Set(usedComponents),
   ]
     .map(tag => getMappedTag(tag, options?.renderer?.alias))
-    .filter(tag => !htmlTags.includes(kebabCase(tag)))
+    .filter(tag => !htmlTags.has(kebabCase(tag)))
     .map(tag => pascalCase(tag))
 
   const endTime = performance.now()

@@ -1,6 +1,29 @@
 import { subtle } from 'uncrypto'
 import { b64ToBytes, normalizeBase64, toArrayBuffer } from './encryption'
 
+async function decompressBytes(binaryData: Uint8Array, compressionType: CompressionFormat): Promise<string[]> {
+  if (typeof (globalThis as unknown as { DecompressionStream?: unknown }).DecompressionStream !== 'undefined') {
+    try {
+      const response = new Response(new Blob([binaryData]))
+      const decompressedStream = response.body?.pipeThrough(new DecompressionStream(compressionType))
+      const text = await new Response(decompressedStream).text()
+      return JSON.parse(text)
+    }
+    catch {
+      // Fall back to node:zlib when Web Streams decompression is not usable in the current runtime.
+    }
+  }
+
+  if (typeof Buffer !== 'undefined') {
+    const { gunzipSync, inflateSync } = await import('node:zlib')
+    const buf = Buffer.from(binaryData)
+    const out = compressionType === 'gzip' ? gunzipSync(buf) : inflateSync(buf)
+    return JSON.parse(out.toString('utf8'))
+  }
+
+  throw new TypeError('No base64 decoding method available')
+}
+
 export async function decompressSQLDump(base64Str: string, compressionType: CompressionFormat = 'gzip'): Promise<string[]> {
   // Browser/Workers fast path
   if (
@@ -8,10 +31,7 @@ export async function decompressSQLDump(base64Str: string, compressionType: Comp
     && typeof (globalThis as unknown as { DecompressionStream?: unknown }).DecompressionStream !== 'undefined'
   ) {
     const binaryData = b64ToBytes(base64Str)
-    const response = new Response(new Blob([toArrayBuffer(binaryData)]))
-    const decompressedStream = response.body?.pipeThrough(new DecompressionStream(compressionType))
-    const text = await new Response(decompressedStream).text()
-    return JSON.parse(text)
+    return decompressBytes(binaryData, compressionType)
   }
 
   // Node fallback (no atob / DecompressionStream)
@@ -64,8 +84,5 @@ export async function decryptAndDecompressSQLDump(
   const gzBytes = new Uint8Array(
     await subtle.decrypt({ name: 'AES-GCM', iv: toArrayBuffer(iv) }, cryptoKey, toArrayBuffer(ciphertext)),
   )
-  const response = new Response(new Blob([toArrayBuffer(gzBytes)]))
-  const decompressedStream = response.body?.pipeThrough(new DecompressionStream('gzip'))
-  const text = await new Response(decompressedStream).text()
-  return JSON.parse(text)
+  return decompressBytes(gzBytes, 'gzip')
 }

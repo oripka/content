@@ -8,7 +8,7 @@ export interface Draft07 {
 
 export interface Draft07Definition {
   type: string
-  properties: Record<string, Draft07DefinitionProperty | Draft07DefinitionPropertyAnyOf | Draft07DefinitionPropertyAllOf>
+  properties: Record<string, Draft07DefinitionProperty | Draft07DefinitionPropertyAnyOf | Draft07DefinitionPropertyAllOf | Draft07DefinitionPropertyOneOf>
   required: string[]
   additionalProperties: boolean
 }
@@ -36,6 +36,10 @@ export interface Draft07DefinitionPropertyAllOf {
   allOf: Draft07DefinitionProperty[]
 }
 
+export interface Draft07DefinitionPropertyOneOf {
+  oneOf: Draft07DefinitionProperty[]
+}
+
 export interface ContentConfig {
   editor?: EditorOptions
   // markdown?: boolean
@@ -43,7 +47,7 @@ export interface ContentConfig {
 }
 
 export interface EditorOptions {
-  input?: 'media' | 'icon' // Override the default input for the field
+  input?: 'media' | 'icon' | 'textarea' // Override the default input for the field
   hidden?: boolean // Do not display the field in the editor
   iconLibraries?: string[] // List of icon libraries to use for the icon input
 }

@@ -1,5 +1,82 @@
 # Changelog
 
+## [3.12.0](https://github.com/nuxt/content/compare/v3.11.2...v3.12.0) (2026-02-27)
+
+### Features
+
+* **llms:** add related links to raw markdown endpoint ([#3724](https://github.com/nuxt/content/issues/3724)) ([fadaf71](https://github.com/nuxt/content/commit/fadaf716e153ae19ad309d448d7ff7b3f3fa05f9))
+
+### Bug Fixes
+
+* `syntax error` with datetime fields and standardize date/datetime formats ([#3698](https://github.com/nuxt/content/issues/3698)) ([eb9f8b6](https://github.com/nuxt/content/commit/eb9f8b61bfeed10ef20bfd9425ad98a1be5576b9))
+* **api:** do not forward accept encoding header ([#3701](https://github.com/nuxt/content/issues/3701)) ([1d92be5](https://github.com/nuxt/content/commit/1d92be5908a87d01aa8299e960f6f5f6245aa0de))
+* **collection:** use UTF-8 byte length for SQL query size check ([#3717](https://github.com/nuxt/content/issues/3717)) ([9f8402a](https://github.com/nuxt/content/commit/9f8402a2f98c2edeb3c27889b0b3b41ed048890a))
+* disable title extraction when `contentHeading === false` ([#3725](https://github.com/nuxt/content/issues/3725)) ([f5a4679](https://github.com/nuxt/content/commit/f5a46797019ed662e8087c05535d1909926ce877))
+* **llms:** avoid `import(variableName)` pattern ([#3733](https://github.com/nuxt/content/issues/3733)) ([89c0b25](https://github.com/nuxt/content/commit/89c0b2576c1afe23fa1817203c84bd71bde08fec))
+* **queryCollectionSearchSections:** fix options types ([#3705](https://github.com/nuxt/content/issues/3705)) ([b3fa025](https://github.com/nuxt/content/commit/b3fa02598152967209de75328ec3c073844a53b5))
+* **ssr:** local content components on Cloudflare Workers ([#3704](https://github.com/nuxt/content/issues/3704)) ([7cff2b9](https://github.com/nuxt/content/commit/7cff2b9f3ec60619d51c5f23fa0a5446c3f979d6))
+
+## [3.11.2](https://github.com/nuxt/content/compare/v3.11.1...v3.11.2) (2026-02-05)
+
+### Bug Fixes
+
+* **studio:** fallback to env variable to detect ai feature ([#3713](https://github.com/nuxt/content/issues/3713)) ([3fc8b7b](https://github.com/nuxt/content/commit/3fc8b7b06fa45136d48258e64d49cca1961c313d))
+
+## [3.11.1](https://github.com/nuxt/content/compare/v3.11.0...v3.11.1) (2026-02-05)
+
+### Features
+
+* **collections:** create studio collections for AI if detected ([#3709](https://github.com/nuxt/content/issues/3709)) ([7744645](https://github.com/nuxt/content/commit/7744645db07c5d8ecce810e8871cd42239637b7b))
+
+### Bug Fixes
+
+* issue with disabling `contentRawMarkdown` ([5be6b0c](https://github.com/nuxt/content/commit/5be6b0cdf5d50440010a988dfd472e69d989f3ef))
+
+## [3.11.0](https://github.com/nuxt/content/compare/v3.10.0...v3.11.0) (2026-01-16)
+
+### Features
+
+* **api:** use request fetch ([#3677](https://github.com/nuxt/content/issues/3677)) ([2b32a4d](https://github.com/nuxt/content/commit/2b32a4d833a337cb5c06b0938f93157b337a8837))
+* auto generate markdown version of documents ([#3688](https://github.com/nuxt/content/issues/3688)) ([340fdf4](https://github.com/nuxt/content/commit/340fdf48984d54050fde02f55c04d984be3fc498))
+* cast date field from datetime to date string format ([#3673](https://github.com/nuxt/content/issues/3673)) ([f1a2ca4](https://github.com/nuxt/content/commit/f1a2ca4a1c8e4492677e4f9036e16351b22a2888))
+* **collection:** allow hidden property in editor without redefine validation ([#3661](https://github.com/nuxt/content/issues/3661)) ([24af55a](https://github.com/nuxt/content/commit/24af55a6d47c2839810e1f7bf2f3bd1b625e73a9))
+* **nuxt-llms:** `rewriteLLMSTxt` option to disable rewriting paths in `llms.txt` ([38e57ec](https://github.com/nuxt/content/commit/38e57ec3236892001a865a2027a39bc30cceaa52))
+
+### Bug Fixes
+
+* add `mdc.components.map` to renderer aliases ([7eebe27](https://github.com/nuxt/content/commit/7eebe27a2585b9d9a7bb19cd66c8d6aceb46e84e)), closes [#3681](https://github.com/nuxt/content/issues/3681)
+* **nuxthub:** handle nuxthub version correctly ([#3680](https://github.com/nuxt/content/issues/3680)) ([695bd2e](https://github.com/nuxt/content/commit/695bd2e8168f180c0d5abf8ac04e8d1f23b06e6e))
+* **nuxthub:** register sql_dump route even if the database is disabled ([#3668](https://github.com/nuxt/content/issues/3668)) ([bb78812](https://github.com/nuxt/content/commit/bb788126e492812478dd929ce111687dffe7e006))
+
+### Performance Improvements
+
+* wrap SQL queries in transaction ([#3670](https://github.com/nuxt/content/issues/3670)) ([030dc27](https://github.com/nuxt/content/commit/030dc275a4090788f290af80e78250cf4708effb))
+
+### Reverts
+
+* Revert "chore: upgrade deps" ([c4a3228](https://github.com/nuxt/content/commit/c4a3228a8c0a9c9033f83339e89c11cfb77e1675))
+* Revert "chore: upgrade deps" ([841b360](https://github.com/nuxt/content/commit/841b3605b653ca3157a6f914369bd7af990ed073))
+
+## [3.10.0](https://github.com/nuxt/content/compare/v3.9.0...v3.10.0) (2025-12-24)
+
+### Features
+
+* add optional database indexes ([#3637](https://github.com/nuxt/content/issues/3637)) ([8ab6ff1](https://github.com/nuxt/content/commit/8ab6ff119d20fb9237a5f59ea476e93c6c1a7bca))
+* **search:** add minHeading/maxHeading options to queryCollectionSearchSections ([#3636](https://github.com/nuxt/content/issues/3636)) ([8053ae7](https://github.com/nuxt/content/commit/8053ae7119bdc0e2a246ba0c9c51b9f8782fd140))
+* shallow clone git repository sources ([#3542](https://github.com/nuxt/content/issues/3542)) ([e6bf06f](https://github.com/nuxt/content/commit/e6bf06f02e594a628665dfb4a63778ebf2b3a54c))
+* single CSV file collections ([#3513](https://github.com/nuxt/content/issues/3513)) ([8d88738](https://github.com/nuxt/content/commit/8d88738d0c86dc193bfd060357c16a85f93e73ef))
+
+### Bug Fixes
+
+* **database:** sqlite memory driver syntax ([#3635](https://github.com/nuxt/content/issues/3635)) ([9b4b4f2](https://github.com/nuxt/content/commit/9b4b4f2e910b1bbdf979235b15ec8962eeaf14fa))
+* **docs:** prerendering issues ([b8c5225](https://github.com/nuxt/content/commit/b8c522566b204c6afed0aadabeea837978ece979))
+* **lint:** configs ([1ef7768](https://github.com/nuxt/content/commit/1ef7768b59c76eb5627c31cbf6648eb991d4811d))
+* **lint:** unique headings ([c5cc00c](https://github.com/nuxt/content/commit/c5cc00c478ddba999e3655b29a5daf33c34f32a0))
+* **module:** work with route rules `cache: true` ([#3617](https://github.com/nuxt/content/issues/3617)) ([fa6c267](https://github.com/nuxt/content/commit/fa6c2670f528fd561f43db07b779f3e21463d176))
+* **nuxthub:** inherit preset form node/cloudflare ([551a7fb](https://github.com/nuxt/content/commit/551a7fb8fd9256aec13f1ffcaba7141131ec44ab))
+* **parser:** do not extract content title & description from body on data collections ([4f4e958](https://github.com/nuxt/content/commit/4f4e9583b2581c2c2524aacffac04565a21ada04))
+* **path-meta:** apply path meta fields if they exists in schema ([#3632](https://github.com/nuxt/content/issues/3632)) ([b3d7464](https://github.com/nuxt/content/commit/b3d7464edbafd5c712eaca745684c783a09e7576))
+
 ## [3.9.0](///compare/v3.8.2...v3.9.0) (2025-12-03)
 
 ### Features
