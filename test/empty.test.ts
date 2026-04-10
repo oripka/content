@@ -90,7 +90,7 @@ describe('empty', async () => {
     })
 
     test('is downloadable', async () => {
-      const response: string = await $fetch('/__nuxt_content/content/sql_dump.txt', { responseType: 'text' })
+      const response: string = await $fetch('/api/content/content/sql_dump.txt', { responseType: 'text' })
       expect(response).toBeDefined()
 
       const parsedDump = await decompressSQLDump(response)

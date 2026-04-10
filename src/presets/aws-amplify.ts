@@ -12,7 +12,7 @@ export default definePreset({
     // Fetching assets on server side is not working with AWS Amplify
     // Disable prerendering to avoid fetching assets on server side
     Object.keys(nuxt.options.routeRules || {}).forEach((route) => {
-      if (route.startsWith('/__nuxt_content/') && route.endsWith('/sql_dump.txt')) {
+      if (route.startsWith('/api/content/') && route.endsWith('/sql_dump.txt')) {
         nuxt.options.routeRules![route]!.prerender = false
       }
     })
