@@ -10,6 +10,7 @@ const SQL_OPERATORS = new Set<SQLOperator>([
   '<',
   '<>',
   'IN',
+  'NOT IN',
   'BETWEEN',
   'NOT BETWEEN',
   'IS NULL',

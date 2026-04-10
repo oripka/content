@@ -59,6 +59,18 @@ describe('collectionQueryBuilder', () => {
     )
   })
 
+  it('builds query with NOT IN operator', async () => {
+    const query = collectionQueryBuilder(mockCollection, mockFetch)
+    await query
+      .where('category', 'NOT IN', ['news', 'tech'])
+      .all()
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'articles',
+      'SELECT * FROM _articles WHERE ("category" NOT IN (\'news\', \'tech\')) ORDER BY stem ASC',
+    )
+  })
+
   it('builds query with BETWEEN operator', async () => {
     const query = collectionQueryBuilder(mockCollection, mockFetch)
     await query
