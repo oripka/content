@@ -175,11 +175,11 @@ export default defineNuxtModule<ModuleOptions>({
 
     // @ts-expect-error - Prevent nuxtseo from indexing nuxt-content routes
     // @see https://github.com/nuxt/content/pull/3299
-    nuxt.options.routeRules![`/__nuxt_content/**`] = { robots: false }
+    nuxt.options.routeRules![`/api/content/**`] = { robots: false }
 
     manifest.collections.forEach((collection) => {
       if (!collection.private) {
-        nuxt.options.routeRules![`/__nuxt_content/${collection.name}/sql_dump.txt`] = { prerender: true }
+        nuxt.options.routeRules![`/api/content/${collection.name}/sql_dump.txt`] = { prerender: true }
       }
     })
 
@@ -194,7 +194,7 @@ export default defineNuxtModule<ModuleOptions>({
 
       config.handlers ||= []
       config.handlers.push({
-        route: '/__nuxt_content/:collection/query',
+        route: '/api/content/:collection/query',
         handler: resolver.resolve('./runtime/api/query.post'),
       })
 
