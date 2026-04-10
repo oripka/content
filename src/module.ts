@@ -175,11 +175,17 @@ export default defineNuxtModule<ModuleOptions>({
 
     // @ts-expect-error - Prevent nuxtseo from indexing nuxt-content routes
     // @see https://github.com/nuxt/content/pull/3299
-    nuxt.options.routeRules![`/api/content/**`] = { robots: false }
+    nuxt.options.routeRules![`/api/content/**`] = {
+      ...nuxt.options.routeRules![`/api/content/**`],
+      robots: false,
+    }
 
     manifest.collections.forEach((collection) => {
       if (!collection.private) {
-        nuxt.options.routeRules![`/api/content/${collection.name}/sql_dump.txt`] = { prerender: true }
+        nuxt.options.routeRules![`/api/content/${collection.name}/sql_dump.txt`] = {
+          ...nuxt.options.routeRules![`/api/content/${collection.name}/sql_dump.txt`],
+          prerender: true,
+        }
       }
     })
 
