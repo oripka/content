@@ -43,7 +43,7 @@
   ],
   "scripts": {
     "postinstall": "node scripts/patch-deps.mjs",
-    "prepack": "nuxt-module-build build",
+    "prepack": "pnpm dev:prepare && nuxt-module-build build",
     "typecheck": "nuxt typecheck",
     "example": "run () { nuxt dev examples/$*; }; run",
     "docs": "nuxt dev docs",
