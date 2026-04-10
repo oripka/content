@@ -36,8 +36,6 @@ export default defineTransformer({
         plugins: config.rehypePlugins,
         options: { handlers: { link } },
       },
-    }, {
-      fileOptions: file,
     })
 
     if ((options as { compress: boolean }).compress) {
