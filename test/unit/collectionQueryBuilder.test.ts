@@ -180,4 +180,14 @@ describe('collectionQueryBuilder', () => {
       'SELECT * FROM _articles WHERE ("path" = \'/blog/my-article\') ORDER BY stem ASC',
     )
   })
+
+  it('rejects unsafe where field names', () => {
+    const query = collectionQueryBuilder(mockCollection, mockFetch)
+    expect(() => query.where('title" DESC; DROP TABLE users; --', '=', 'x')).toThrow('Invalid where field')
+  })
+
+  it('rejects unsafe order field names', () => {
+    const query = collectionQueryBuilder(mockCollection, mockFetch)
+    expect(() => query.order('date" DESC, (SELECT 1)--' as never, 'ASC')).toThrow('Invalid order field')
+  })
 })

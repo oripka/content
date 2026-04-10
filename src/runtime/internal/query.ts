@@ -2,6 +2,22 @@ import { withoutTrailingSlash } from 'ufo'
 import type { Collections, CollectionQueryBuilder, CollectionQueryGroup, QueryGroupFunction, SQLOperator } from '@nuxt/content'
 import { tables } from '#content/manifest'
 
+const SQL_OPERATORS = new Set<SQLOperator>([
+  '=',
+  '>=',
+  '<=',
+  '>',
+  '<',
+  '<>',
+  'IN',
+  'BETWEEN',
+  'NOT BETWEEN',
+  'IS NULL',
+  'IS NOT NULL',
+  'LIKE',
+  'NOT LIKE',
+])
+
 const buildGroup = <T extends keyof Collections>(group: CollectionQueryGroup<Collections[T]>, type: 'AND' | 'OR') => {
   const conditions = (group as unknown as { _conditions: Array<string> })._conditions
   return conditions.length > 0 ? `(${conditions.join(` ${type} `)})` : ''
@@ -14,14 +30,16 @@ export const collectionQueryGroup = <T extends keyof Collections>(collection: T)
     // @ts-expect-error -- internal
     _conditions: conditions,
     where(field: keyof Collections[T] | string, operator: SQLOperator, value?: unknown): CollectionQueryGroup<Collections[T]> {
+      const safeField = quoteIdentifier(field, 'where')
+      const safeOperator = toSafeOperator(operator)
       let condition: string
 
-      switch (operator.toUpperCase()) {
+      switch (safeOperator) {
         case 'IN':
         case 'NOT IN':
           if (Array.isArray(value)) {
             const values = value.map(val => singleQuote(val)).join(', ')
-            condition = `"${String(field)}" ${operator.toUpperCase()} (${values})`
+            condition = `${safeField} ${safeOperator} (${values})`
           }
           else {
             throw new TypeError(`Value for ${operator} must be an array`)
@@ -31,7 +49,7 @@ export const collectionQueryGroup = <T extends keyof Collections>(collection: T)
         case 'BETWEEN':
         case 'NOT BETWEEN':
           if (Array.isArray(value) && value.length === 2) {
-            condition = `"${String(field)}" ${operator.toUpperCase()} ${singleQuote(value[0])} AND ${singleQuote(value[1])}`
+            condition = `${safeField} ${safeOperator} ${singleQuote(value[0])} AND ${singleQuote(value[1])}`
           }
           else {
             throw new Error(`Value for ${operator} must be an array with two elements`)
@@ -40,16 +58,16 @@ export const collectionQueryGroup = <T extends keyof Collections>(collection: T)
 
         case 'IS NULL':
         case 'IS NOT NULL':
-          condition = `"${String(field)}" ${operator.toUpperCase()}`
+          condition = `${safeField} ${safeOperator}`
           break
 
         case 'LIKE':
         case 'NOT LIKE':
-          condition = `"${String(field)}" ${operator.toUpperCase()} ${singleQuote(value)}`
+          condition = `${safeField} ${safeOperator} ${singleQuote(value)}`
           break
 
         default:
-          condition = `"${String(field)}" ${operator} ${singleQuote(typeof value === 'boolean' ? Number(value) : value)}`
+          condition = `${safeField} ${safeOperator} ${singleQuote(typeof value === 'boolean' ? Number(value) : value)}`
       }
       conditions.push(`${condition}`)
       return query
@@ -118,7 +136,8 @@ export const collectionQueryBuilder = <T extends keyof Collections>(collection: 
       return query
     },
     order(field: keyof Collections[T], direction: 'ASC' | 'DESC') {
-      params.orderBy.push(`"${String(field)}" ${direction}`)
+      const safeDirection = direction === 'DESC' ? 'DESC' : 'ASC'
+      params.orderBy.push(`${quoteIdentifier(field, 'order')} ${safeDirection}`)
       return query
     },
     async all(): Promise<Collections[T][]> {
@@ -129,7 +148,7 @@ export const collectionQueryBuilder = <T extends keyof Collections>(collection: 
     },
     async count(field: keyof Collections[T] | '*' = '*', distinct: boolean = false) {
       return fetch(collection, buildQuery({
-        count: { field: String(field), distinct },
+        count: { field: field === '*' ? field : unquoteIdentifier(quoteIdentifier(field, 'count')), distinct },
       })).then(m => (m[0] as { count: number }).count)
     },
   }
@@ -174,4 +193,24 @@ export const collectionQueryBuilder = <T extends keyof Collections>(collection: 
 
 function singleQuote(value: unknown) {
   return `'${String(value).replace(/'/g, '\'\'')}'`
+}
+
+function quoteIdentifier(field: string | number | symbol, context: 'where' | 'order' | 'count') {
+  const stringField = String(field)
+  if (!stringField.match(/^[A-Za-z_][A-Za-z0-9_]*$/)) {
+    throw new TypeError(`Invalid ${context} field: ${stringField}`)
+  }
+  return `"${stringField}"`
+}
+
+function unquoteIdentifier(identifier: string) {
+  return identifier.slice(1, -1)
+}
+
+function toSafeOperator(operator: SQLOperator) {
+  const normalized = operator.toUpperCase() as SQLOperator
+  if (!SQL_OPERATORS.has(normalized)) {
+    throw new TypeError(`Invalid SQL operator: ${operator}`)
+  }
+  return normalized
 }
