@@ -88,7 +88,6 @@ function cleanupQuery(query: string, options: { removeString: boolean } = { remo
   let result = ''
   for (let i = 0; i < query.length; i++) {
     const char = query[i]
-    const prevChar = query[i - 1]
     const nextChar = query[i + 1]
 
     if (char === '\'' || char === '"') {
@@ -98,8 +97,14 @@ function cleanupQuery(query: string, options: { removeString: boolean } = { remo
       }
 
       if (inString) {
-        if (char !== stringFence || nextChar === stringFence || prevChar === stringFence) {
+        if (char !== stringFence) {
           // skip character, it's part of a string
+          continue
+        }
+
+        if (nextChar === stringFence) {
+          // escaped quote inside a string literal
+          i++
           continue
         }
 
